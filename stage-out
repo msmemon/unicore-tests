@@ -1,0 +1,9 @@
+ <jsdl:DataStaging>
+      <jsdl:FileName>TOKEN</jsdl:FileName>
+      <jsdl:CreationFlag>overwrite</jsdl:CreationFlag>
+      <jsdl:DeleteOnTermination>true</jsdl:DeleteOnTermination>
+      <jsdl:Target>
+        <jsdl:URI>file://SERVER_WORKDIR/lots-of-files/1000/TOKEN</jsdl:URI>
+      </jsdl:Target>
+    </jsdl:DataStaging>
+

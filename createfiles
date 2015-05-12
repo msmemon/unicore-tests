@@ -1,0 +1,8 @@
+#!/bin/bash
+if [ $1 -gt 0 ]
+then
+    for i in $(seq 1 $1)
+    do
+      touch file$(printf "%05d" $i)
+    done
+fi

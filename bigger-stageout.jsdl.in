@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsdl:JobDefinition xmlns:jsdl="http://schemas.ggf.org/jsdl/2005/11/jsdl"
+                    xmlns:jsdl-posix="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix">
+  <jsdl:JobDescription>
+    <jsdl:JobIdentification>
+      <jsdl:JobName>bigger-stageout</jsdl:JobName>
+      <jsdl:JobProject>TG-STA110009S</jsdl:JobProject>
+    </jsdl:JobIdentification>
+    <jsdl:Resources>
+      <jsdl:TotalCPUCount>
+        <jsdl:Exact>1</jsdl:Exact>
+      </jsdl:TotalCPUCount>
+      <jsdl:IndividualCPUTime>
+        <jsdl:Exact>14400</jsdl:Exact>
+      </jsdl:IndividualCPUTime>
+    </jsdl:Resources>
+    <jsdl:Application>
+      <jsdl-posix:POSIXApplication>
+        <jsdl-posix:Executable>/bin/dd</jsdl-posix:Executable>
+	<jsdl-posix:Argument>if=/dev/zero</jsdl-posix:Argument>
+	<jsdl-posix:Argument>of=biggerfile</jsdl-posix:Argument>
+	<jsdl-posix:Argument>bs=5M</jsdl-posix:Argument>
+	<jsdl-posix:Argument>count=20000</jsdl-posix:Argument>
+        <jsdl-posix:Output>dd.stdout</jsdl-posix:Output>
+        <jsdl-posix:Error>dd.stderr</jsdl-posix:Error>
+      </jsdl-posix:POSIXApplication>
+    </jsdl:Application>
+    <jsdl:DataStaging>
+      <jsdl:FileName>biggerfile</jsdl:FileName>
+      <jsdl:CreationFlag>overwrite</jsdl:CreationFlag>
+      <jsdl:DeleteOnTermination>true</jsdl:DeleteOnTermination>
+      <jsdl:Target>
+        <jsdl:URI>file://SERVER_WORKDIR/biggerfile</jsdl:URI>
+      </jsdl:Target>
+    </jsdl:DataStaging>
+  </jsdl:JobDescription>
+</jsdl:JobDefinition>
+

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsdl:JobDefinition xmlns:jsdl="http://schemas.ggf.org/jsdl/2005/11/jsdl"
+               xmlns:jsdl-posix="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix">
+ <jsdl:JobDescription>
+    <jsdl:JobIdentification>
+      <jsdl:JobName>mpihw</jsdl:JobName>
+      <jsdl:JobProject>TG-STA110009S</jsdl:JobProject>
+      <jsdl:JobAnnotation>gw_username=test-activity-224@xsede.org</jsdl:JobAnnotation>
+    </jsdl:JobIdentification>
+    <jsdl:Resources>
+      <jsdl:TotalCPUCount>
+        <jsdl:Exact>8</jsdl:Exact>
+      </jsdl:TotalCPUCount>
+      <jsdl:IndividualCPUTime>
+        <jsdl:Exact>3600</jsdl:Exact>
+      </jsdl:IndividualCPUTime> 
+    </jsdl:Resources>
+     <jsdl:Application>
+      <jsdl-posix:POSIXApplication>
+        <jsdl-posix:Executable>./mpihw</jsdl-posix:Executable>
+        <jsdl-posix:Argument>-n</jsdl-posix:Argument>
+        <jsdl-posix:Argument>8</jsdl-posix:Argument>
+      </jsdl-posix:POSIXApplication>
+    </jsdl:Application>
+    <jsdl:DataStaging>
+      <jsdl:FileName>mpihw</jsdl:FileName>
+      <jsdl:CreationFlag>overwrite</jsdl:CreationFlag>
+      <jsdl:DeleteOnTermination>true</jsdl:DeleteOnTermination>
+      <jsdl:Source>
+        <jsdl:URI>http://unicore-dev.zam.kfa-juelich.de/release-candidates/xsede-tests/mpihw</jsdl:URI>
+      </jsdl:Source>
+    </jsdl:DataStaging>
+ </jsdl:JobDescription>
+</jsdl:JobDefinition>

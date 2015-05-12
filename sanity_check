@@ -1,0 +1,23 @@
+#!/bin/bash
+if [ -z "$SRCDIR" ]; then
+    echo SRCDIR not defined in site.conf \(value=\"$SRCDIR\"\), exiting!
+    exit -1
+elif [ -z "$WORKDIR" ]; then
+    echo WORKDIR not defined in site.conf \(value=\"$WORKDIR\"\), exiting!
+    exit -1
+elif [ -z "$UCC_KEYSTORE_PW" ]; then
+    echo UCC_KEYSTORE_PW not defined in site.conf, exiting!
+    exit -1
+elif [ -z "$UCC_TRUSTSTORE_DIR" ]; then
+    echo UCC_TRUSTSTORE_DIRECTORY not defined in site.conf, exiting!
+    exit -1
+elif [ -z "$UCC_TRUSTSTORE_CRL" ]; then
+    echo UCC_TRUSTSTORE_CRL not defined in site.conf, exiting!
+    exit -1
+elif [ -z "$UCC_REGISTRY" ]; then
+    echo UCC_REGISTRY not defined in site.conf, exiting!
+    exit -1
+elif [ -z "$UCC_BES" ]; then
+    echo UCC_BES not defined in site.conf, exiting!
+    exit -1
+fi

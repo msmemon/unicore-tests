@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsdl:JobDefinition xmlns:jsdl="http://schemas.ggf.org/jsdl/2005/11/jsdl"
+               xmlns:jsdl-posix="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix">
+ <jsdl:JobDescription>
+    <jsdl:JobIdentification>
+      <jsdl:JobName>unsupported-resource-MUST-FAIL</jsdl:JobName>
+      <jsdl:JobProject>TG-STA110009S</jsdl:JobProject>
+    </jsdl:JobIdentification>
+    <jsdl:Application>
+      <jsdl-posix:POSIXApplication>
+        <jsdl-posix:Executable>/bin/sleep</jsdl-posix:Executable>
+        <jsdl-posix:Argument>1</jsdl-posix:Argument>
+      </jsdl-posix:POSIXApplication>
+    </jsdl:Application>
+    <jsdl:Resources>
+      <jsdl:TotalCPUCount>
+        <jsdl:Exact>12</jsdl:Exact>
+      </jsdl:TotalCPUCount>
+      <jsdl:IndividualCPUTime>
+        <jsdl:Exact>3600</jsdl:Exact>
+      </jsdl:IndividualCPUTime>
+      <jsdl:IndividualPhysicalMemory>
+        <jsdl:Exact>34359738368000000</jsdl:Exact>
+      </jsdl:IndividualPhysicalMemory>
+    </jsdl:Resources>
+ </jsdl:JobDescription>
+</jsdl:JobDefinition>
+

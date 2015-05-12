@@ -1,0 +1,31 @@
+#!/bin/bash
+if [[ "$PATH" != *:. ]] && [[ "$PATH" != *:.:* ]]; then export PATH="$PATH":.; fi
+
+. site.conf
+. sanity_check
+
+if [ ! -d $WORKDIR ]; then
+    mkdir -p $WORKDIR
+fi
+
+if [ ! "$SRCDIR" = "$WORKDIR" ]; then                                                                                                                                                                                            
+    cp $SRCDIR/*.jsdl $WORKDIR                                                                                                                                                                                                   
+fi     
+
+
+for f in $SRCDIR/*.jsdl.in
+do
+  result=$WORKDIR/$(basename $f .in)
+  #cat $f | sed "s/GFTP_HOST/$GFTP_HOST/" > $result 
+  
+  # for gridftp tests
+  #sed "s/GFTP_HOST/$GFTP_HOST/" $f > $result
+  
+  # for basic unicore tests
+ #sed "s/SERVER_WORKDIR/$SERVER_WORKDIR/" $f > $result
+  #cat $f | sed "s:SERVER_WORKDIR:$SERVER_WORKDIR:" > $result
+ 
+  sed -e "s/GFTP_HOST/$GFTP_HOST/" -e "s:SERVER_WORKDIR:$SERVER_WORKDIR:" $f > $result
+
+
+done

@@ -1,0 +1,50 @@
+#!/bin/sh
+
+# source code
+cat <<EOF >mpihw.c
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char *argv[])
+{
+   int rank,size;
+   
+   MPI_Init(&argc,&argv);
+   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+   MPI_Comm_size(MPI_COMM_WORLD,&size);
+   printf("Hello from rank %d of %d\n",rank,size);
+   MPI_Finalize();
+   return(0);
+}
+EOF
+
+# compile
+MPICC=cc
+MPILIBS=
+if [ -n "$(which mpicc 2>/dev/null)" ]; then
+    MPICC=$(which mpicc 2>/dev/null)
+elif [ -n "$CC" ]; then 
+    MPICC="$CC"
+    MPILIBS="-lmpi"
+fi
+export MPICC MPILIBS
+rm -f a.out
+echo "MPICC is "
+echo $MPICC
+$MPICC mpihw.c $MPILIBS
+if [ ! -e a.out -a ! -x a.out ]; then
+    echo Compilation failed, exiting
+    exit -1
+fi
+
+# run
+MPIRUN=mpirun
+if [ -n "$(which aprun 2>/dev/null)" ]; then
+    MPIRUN=aprun
+elif [ -n "$(which ibrun 2>/dev/null)" ]; then
+    MPIRUN=ibrun
+elif [ -n "$(which mpiexec 2>/dev/null)" ]; then
+    MPIRUN=mpiexec
+fi
+echo cd $(pwd) \; $MPIRUN $* ./a.out
+$MPIRUN $* ./a.out

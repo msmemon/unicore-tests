@@ -1,0 +1,15 @@
+#!/bin/bash
+if [[ "$PATH" != *:. ]] && [[ "$PATH" != *:.:* ]]; then export PATH="$PATH":.; fi
+. site.conf
+. sanity_check
+
+if [ "$SRCDIR" = "$WORKDIR" ]; then
+    rm -f $WORKDIR/*.{job,properties}
+    for file in $SRCDIR/*.jsdl.in
+    do
+      target=$WORKDIR/$(basename $file .in)
+      rm -f $target
+    done
+else
+    rm -rf $WORKDIR/*
+fi

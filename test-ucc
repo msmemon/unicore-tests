@@ -1,0 +1,667 @@
+#!/bin/bash
+if [[ "$PATH" != *:. ]] && [[ "$PATH" != *:.:* ]]; then export PATH="$PATH":.; fi
+
+. site.conf
+. sanity_check
+
+TESTS_TO_RUN=$1
+
+function startTest
+{
+CURRENT_TEST=$1
+DESCRIPTION=$2
+if [[ "$CURRENT_TEST" =~ $TESTS_TO_RUN ]] || ( [[ "$CURRENT_TEST" == "Functionality 1" ]] && [[ "${OLD_CERT_OK}" -ne "0" ]] )
+then
+echo "### $CURRENT_TEST -- $DESCRIPTION ###"
+echo 
+echo "Test starts on "`date`
+T="$(date +%s)"
+return 0
+else
+return 1
+fi
+}
+
+
+function endTest
+{
+
+T="$(($(date +%s)-T))"
+if [ "$1" -gt "0" ]
+then
+echo "Test $CURRENT_TEST has failed!"
+if [[ $FAILED_TESTS != *"$CURRENT_TEST"* ]]
+then
+   FAILED_TESTS="$FAILED_TESTS\n$CURRENT_TEST ($T seconds)"
+fi
+else
+if [[ $SUCCESSFUL_TESTS != *"$CURRENT_TEST"* ]]
+then
+   SUCCESSFUL_TESTS="$SUCCESSFUL_TESTS\n$CURRENT_TEST ($T seconds)"
+fi
+echo "Test $CURRENT_TEST successful."
+fi
+
+echo "Test took $T seconds."
+echo
+echo
+}
+
+function wait_for_completion 
+{
+echo "Waiting for jobs to complete..."
+ucc run-groovy -c $UCCPREFS -f $SRCDIR/checkStatus.groovy *.job 2>&1 | grep -v "$IGNORE_PATTERN"
+return "${PIPESTATUS[0]}"
+}
+
+
+function cleanupJobs 
+{
+echo "Cleaning up submitted jobs..."
+ucc run-groovy -c $UCCPREFS -f $SRCDIR/cleanupJobs.groovy *.job -v
+#ucc run-groovy -c $UCCPREFS -f $SRCDIR/cleanupJobs.groovy *.job 2>&1 | grep -v "$IGNORE_PATTERN"
+return "${PIPESTATUS[0]}"
+echo
+}
+
+function cleanupBigFiles
+{
+echo "cleaning up big file on target system..."
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j cleanup-big-files.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+wait_for_completion
+echo "... done"
+cleanupJobs
+}
+
+
+function submit_sleeps_and_cancel 
+{
+echo "Submitting $1 jobs..."
+MY_EXIT_CODE=0
+for i in $(seq 1 $1)
+do 
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j sleep.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+MY_EXIT_CODE=`expr $MY_EXIT_CODE + $?` 
+done
+
+ucc run-groovy -c $UCCPREFS -f $SRCDIR/cancelMany.groovy *.job 2>&1 | grep -v "$IGNORE_PATTERN"
+MY_EXIT_CODE=`expr $MY_EXIT_CODE + $?` 
+wait_for_completion
+MY_EXIT_CODE=`expr $MY_EXIT_CODE + $?`
+return $MY_EXIT_CODE
+}
+
+if [ -z "$(which myproxy-logon 2>/dev/null)" ]; then
+    echo myproxy-logon not in PATH, exiting!
+    exit -2
+elif [ -z "$(which openssl 2>/dev/null)" ]; then
+    echo openssl not in PATH, exiting!
+    exit -2
+elif [ -z "$(which ucc 2>/dev/null)" ]; then
+    echo ucc not in PATH, exiting!
+    exit -2
+fi
+
+KEYSTORE_FILE="$HOME/.ucc/myproxy.jks"
+
+# check whether we can re-use existing certificate
+# i.e. it is valid for more than 5 hours
+./ssl-cert-check "$KEYSTORE_FILE" "$UCC_KEYSTORE_PW" 5 
+OLD_CERT_OK=$?
+
+
+cd $WORKDIR
+rm -f *.{job,properties}
+
+FAILED_TESTS=""
+CURRENT_TEST=""
+
+EXIT_CODE=0
+
+startTest "Functionality 1" "Authenticate with XSEDE MyProxy server and store short-lived credential."
+if [ "$?" -eq "0" ]
+then
+if [ -z "$X509_USER_PROXY" ]; then
+    export X509_USER_PROXY=/tmp/x509up_u$(id -u)
+fi
+EXIT_CODE=$?
+
+
+myproxy-logon -b -s myproxy.xsede.org -l $XSEDE_USER_NAME
+if [ $? -ne 0 ]; then
+   echo myproxy-logon failed, exiting!
+    exit -3
+fi
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+
+openssl pkcs12 -export -in $X509_USER_PROXY -clcerts -out $KEYSTORE_FILE -passout pass:"$UCC_KEYSTORE_PW" -name user
+if [ $? -ne 0 ]; then
+    echo openssl pkcs12 failed, exiting!
+    exit -3
+fi
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+fi
+
+
+if [ -e $HOME/.ucc/preferences.emstest ]; then
+    cp $HOME/.ucc/preferences.emstest $HOME/.ucc/preferences.emstest.old
+fi
+
+
+UCCPREFS=$HOME/.ucc/preferences.emstest
+
+cat >$HOME/.ucc/preferences.emstest <<EOF
+credential.path=$KEYSTORE_FILE
+credential.password=$UCC_KEYSTORE_PW
+truststore.type=directory
+truststore.directoryLocations.1=$UCC_TRUSTSTORE_DIR
+truststore.crlLocations.1=$UCC_TRUSTSTORE_CRL
+
+log4j.appender.A1.File=$HOME/.ucc/ucc.log
+
+# injecting proxy certificate generated from xsede credential
+client.outHandlers=de.fzj.unicore.uas.security.ProxyCertOutHandler
+
+# logging soap payloads
+client.messageLogging=true
+
+registry=$UCC_REGISTRY
+bes.1=$UCC_BES
+http.sockettimeout=20000
+authenticationMethod=MYPROXY
+myproxy.host=myproxy.xsede.org
+myproxy.username=$XSEDE_USER_NAME
+EOF
+
+
+export IGNORE_PATTERN="your certificate will soon expire"
+
+
+
+startTest "Functionality 2" "List all resources available to user through UNICORE"
+if [ "$?" -eq "0" ]
+then
+ucc connect -c $UCCPREFS 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+ucc list-sites -c $UCCPREFS 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE=`expr $EXIT_CODE + ${PIPESTATUS[0]}`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Functionality 3" "Submit a simple serial job without data staging to each available resource through EMS"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j date.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Functionality 4" "Submit a simple serial job with data staging to each available resource through EMS"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j date-stage.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Functionality 5" "Submit a parallel (MPI) job with data staging to each available resource through EMS"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j mpihw.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "Functionality 6" "Submit a parallel (MPI) job carrying science gateway user attributes"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j mpihw-with-gateway-attributes.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+
+startTest "Performance 1" "Submit 1 sleep job and cancel it"
+if [ "$?" -eq "0" ]
+then
+EXIT_CODE=0
+submit_sleeps_and_cancel 1
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 2" "Submit 10 sleep jobs and cancel them"
+if [ "$?" -eq "0" ]
+then
+EXIT_CODE=0
+submit_sleeps_and_cancel 10
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+
+startTest "Performance 3" "Submit 100 sleep jobs and cancel them"
+if [ "$?" -eq "0" ]
+then
+EXIT_CODE=0
+submit_sleeps_and_cancel 100
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 4" "Submit 1000 sleep jobs and cancel them"
+if [ "$?" -eq "0" ]
+then
+EXIT_CODE=0
+submit_sleeps_and_cancel 1000
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 5" "Staging out 10 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-files-stageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "Performance 6" "Staging out 100 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-files-stageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 7" "Staging out 1000 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/1000-files-stageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 8" "Staging in 10 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-files-stagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "Performance 9" "Staging in 100 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-files-stagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 10" "Staging in 1000 files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/1000-files-stagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Performance 11" "Staging out 1 large (10) GB file"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j big-stageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+cleanupBigFiles
+echo
+fi
+
+
+startTest "Performance 12" "Staging out 1 large (100) GB file"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j bigger-stageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE=`expr $EXIT_CODE + $?`
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+cleanupBigFiles
+echo
+fi
+
+
+startTest "Robustness 1" "Submit broken JSDL file; does the TSI crash, is the job rejected, what happens?"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j broken.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+echo "(If this job submitted, expect it to fail.)"
+wait_for_completion
+EXIT_CODE=$?
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Robustness 2" "Submit JSDL file with resource requests not supported on endpoint; does the TSI crash, is the job rejected, what happens?"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j unsupported-resource.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+echo "(If this job submitted, expect it to fail.)"
+wait_for_completion
+EXIT_CODE=$?
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "Robustness 3" "Submit a job that violates site policy; what happens?"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j against-policy.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+echo "(If this job submitted, expect it to fail.)"
+wait_for_completion
+EXIT_CODE=$?
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+if [ "$FAILED_TESTS" == "" ]
+then
+  echo "All tests finished successfully:"
+  echo -e $SUCCESSFUL_TESTS
+else
+  if [ "$SUCCESSFUL_TESTS" == "" ]
+  then
+    echo "All tests failed!"
+  else
+    echo -e "The following tests were finished succesfully:$SUCCESSFUL_TESTS\n\n" 
+    echo -e "The following tests have failed:$FAILED_TESTS" 
+  fi
+fi
+
+
+
+startTest "GFTP 1" "Submit a simple job with data stage-in of a file from selected gridftp endpoint to job working directory"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/date-gstagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+# syntax ./test-ucc "GFTP 22$"
+startTest "GFTP 2" "Submit a simple job with data stage-out of a file from job working directory to selected gridftp endpoint"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/date-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+# not necessary: how do we know the location of files to be copied in--?
+startTest "GFTP 3" "Submit a simple job with data stage-in of a file from selected gridftp endpoint to 
+job working directory and stage-out of the same file to the selected gridftp endpoint"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/date-gstageinout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "GFTP 4" "Staging out 10 (1MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-files-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "GFTP 5" "Staging out 10 (10MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-10M-files-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "GFTP 6" "Staging out 100 (1MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-files-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "GFTP 7" "Staging out 100 (10MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-10M-files-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "GFTP 8" "Staging in 10 (1MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-files-gstagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "GFTP 9" "Staging in 10 (10MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/10-10M-files-gstagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "GFTP 10" "Staging in 100 (1 MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-files-gstagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+endTest $EXIT_CODE
+echo
+fi
+
+startTest "GFTP 11" "Staging in 100 (10 MB) files"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/100-10M-files-gstagein.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?` 
+endTest $EXIT_CODE
+echo
+fi
+
+
+startTest "GFTP 12" "Staging in and out a large (10) GB file"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/big-gstageout.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+EXIT_CODE="${PIPESTATUS[0]}"
+wait_for_completion
+EXIT_CODE=`expr $EXIT_CODE + $?`
+cleanupJobs
+EXIT_CODE=`expr $EXIT_CODE + $?`
+endTest $EXIT_CODE
+echo
+fi
+
+
+
+startTest "GFTP 13" "Submit a JSDL file with invalid staging urls"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/invalidurl.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+echo "(If this job submitted, expect it to fail.)"
+wait_for_completion
+EXIT_CODE=$?
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+
+startTest "GFTP 14" "Submit serial job with an in-accessable location in staging urls"
+if [ "$?" -eq "0" ]
+then
+ucc bes-submit-job -c $UCCPREFS -s $UCC_BES -j $WORKDIR/inaccessibleurl.jsdl 2>&1 | grep -v "$IGNORE_PATTERN"
+echo "(If this job submitted, expect it to fail.)"
+wait_for_completion
+EXIT_CODE=$?
+cleanupJobs
+endTest $EXIT_CODE
+echo
+fi
+
+
+if [ "$FAILED_TESTS" == "" ]
+then
+  echo "All tests finished successfully:"
+  echo -e $SUCCESSFUL_TESTS
+else
+  if [ "$SUCCESSFUL_TESTS" == "" ]
+  then
+    echo "All tests failed!"
+  else
+    echo -e "The following tests were finished succesfully:$SUCCESSFUL_TESTS\n\n" 
+    echo -e "The following tests have failed:$FAILED_TESTS" 
+  fi
+fi

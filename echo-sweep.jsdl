@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsdl:JobDefinition xmlns:jsdl="http://schemas.ggf.org/jsdl/2005/11/jsdl"
+               xmlns:jsdl-posix="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix"
+               xmlns:sweep="http://schemas.ogf.org/jsdl/2007/04/sweep"
+               xmlns:sweepfunc="http://schemas.ogf.org/jsdl/2007/04/sweep/functions"
+               xmlns:file-sweep="http://schemas.ogf.org/jsdl/2008/08/file-sweep"
+               xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+ <jsdl:JobDescription>
+    <jsdl:JobIdentification>
+      <jsdl:JobName>echo sweep</jsdl:JobName>
+      <jsdl:JobProject>TG-STA110009S</jsdl:JobProject>
+    </jsdl:JobIdentification>
+    <jsdl:Resources>
+      <jsdl:TotalCPUCount>
+        <jsdl:Exact>12</jsdl:Exact>
+      </jsdl:TotalCPUCount>
+      <jsdl:IndividualCPUTime>
+        <jsdl:Exact>3600</jsdl:Exact>
+      </jsdl:IndividualCPUTime>
+    </jsdl:Resources>
+    <jsdl:Application>
+      <jsdl-posix:POSIXApplication>
+        <jsdl-posix:Executable>/bin/echo</jsdl-posix:Executable>
+        <jsdl-posix:Argument>ARG</jsdl-posix:Argument>
+      </jsdl-posix:POSIXApplication>
+    </jsdl:Application>
+    <sweep:Sweep>
+      <sweep:Assignment>
+        <sweep:DocumentNode>
+          <sweep:NamespaceBinding ns="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix" prefix="jsdl-posix" />
+          <sweep:Match>//jsdl-posix:Argument[1]</sweep:Match>
+        </sweep:DocumentNode>
+        <sweepfunc:LoopInteger start="1" end="10"/>
+      </sweep:Assignment>
+    </sweep:Sweep>
+ </jsdl:JobDescription>
+</jsdl:JobDefinition>

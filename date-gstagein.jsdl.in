@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsdl:JobDefinition xmlns:jsdl="http://schemas.ggf.org/jsdl/2005/11/jsdl" xmlns:jsdl-posix="http://schemas.ggf.org/jsdl/2005/11/jsdl-posix">
+   <jsdl:JobDescription>
+      <jsdl:JobIdentification>
+         <jsdl:JobName>date_with_stage-in</jsdl:JobName>
+         <jsdl:JobProject>TG-STA110009S</jsdl:JobProject>
+      </jsdl:JobIdentification>
+      <jsdl:Resources>
+         
+         <jsdl:IndividualCPUTime>
+            <jsdl:Exact>3600</jsdl:Exact>
+         </jsdl:IndividualCPUTime>
+      </jsdl:Resources>
+      <jsdl:Application>
+         <jsdl-posix:POSIXApplication>
+            <jsdl-posix:Executable>/bin/bash</jsdl-posix:Executable>
+            <jsdl-posix:Argument>-c 'set -e; if [ -z $1 ]; then if [ -e $0 ]; then exit 0; else exit 1; fi;  else for i in $(seq 1 $1); do if [ -e $0$i ]; then exit 0; else exit 1; fi; done; fi'</jsdl-posix:Argument>
+            <jsdl-posix:Argument>file</jsdl-posix:Argument>
+            <jsdl-posix:Argument>1</jsdl-posix:Argument>
+            <jsdl-posix:Argument>28</jsdl-posix:Argument>
+         </jsdl-posix:POSIXApplication>
+      </jsdl:Application>
+      <jsdl:DataStaging>
+         <jsdl:FileName>file1</jsdl:FileName>
+         <jsdl:CreationFlag>overwrite</jsdl:CreationFlag>
+         <jsdl:DeleteOnTermination>true</jsdl:DeleteOnTermination>
+         <jsdl:Source>
+            <jsdl:URI>gsiftp://GFTP_HOST/N/u/xd-smemon/Mason/xsede-tests/predate.txt</jsdl:URI>
+         </jsdl:Source>
+      </jsdl:DataStaging>
+   </jsdl:JobDescription>
+</jsdl:JobDefinition>
